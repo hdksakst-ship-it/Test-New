@@ -670,7 +670,7 @@ local skillConfig = {
 }
 
 -- Danh sách boss đặc biệt cần teleport ra sau lưng
-local BackstabTargets = {"Jason", "Noli", "JohDoe", "c00lkidd", "Quest666", "1x1x1x1"}
+local BackstabTargets = {"Jason", "Noli", "John Doe"}
 
 -- Biến điều khiển
 local AutoBackstab = false
@@ -693,8 +693,8 @@ local function TeleportBehindTarget(target)
     if not (target and target:FindFirstChild("HumanoidRootPart")) then return end
 
     local hrp = target.HumanoidRootPart
-    -- vị trí sau lưng mục tiêu (càng xa thì tăng số -Z)
-    local backPos = hrp.CFrame * CFrame.new(0, 0, 2) 
+    -- vị trí sau lưng mục tiêu (càng xa thì tăng số Z)
+    local backPos = hrp.CFrame * CFrame.new(0, 0, 2)
 
     -- Teleport + xoay mặt về phía lưng
     char.HumanoidRootPart.CFrame = CFrame.new(backPos.Position, hrp.Position)
@@ -735,11 +735,11 @@ local function CastSkill(skillName)
 end
 
 -- =========================
--- UI: Toggle + Slider
+-- UI: Toggle + Slider (Fluent GUI)
 -- =========================
 
 Tabs.Main:AddToggle("AutoBackstabToggle", {
-    Title = "Auto Backstab",
+    Title = "Auto Backstab (TwoTime)",
     Default = false,
     Callback = function(Value)
         AutoBackstab = Value
@@ -747,14 +747,15 @@ Tabs.Main:AddToggle("AutoBackstabToggle", {
 })
 
 Tabs.Main:AddSlider("TeleportDistanceSlider", {
-    Title = "Backstab Range",
+    Title = "Backstab Range (m)",
+    Description = "Khoảng cách tối đa để teleport",
+    Default = 5,
     Min = 1,
     Max = 10,
-    Default = 5,
-    Callback = function(Value)
-        TeleportDistance = Value
-    end
-})
+    Rounding = 0
+}):OnChanged(function(Value)
+    TeleportDistance = Value
+end)
 
 
 -- Tabs.Player
