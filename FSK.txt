@@ -660,125 +660,128 @@ end)
 
     Tabs.Main:AddSection("↳ Two Time")
 
-local Players = game:GetService("Players") 
-local ReplicatedStorage = game:GetService("ReplicatedStorage") 
-local RunService = game:GetService("RunService") 
-local lp = Players.LocalPlayer
+---------------------------------------------------------------------------------
+-- 🟢 Chỉ load script backstab sau khi GUI sẵn sàng
+task.defer(function()
+    -- đảm bảo tab Main có
+    if not Tabs.Main then return end
 
--- Remote
-local daggerRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent") 
-local killersFolder = workspace:WaitForChild("Players"):WaitForChild("Killers")
-local killerNames = { "Jason", "c00lkidd", "JohnDoe", "1x1x1x1", "Noli" } 
+    local Players = game:GetService("Players") 
+    local ReplicatedStorage = game:GetService("ReplicatedStorage") 
+    local RunService = game:GetService("RunService") 
+    local lp = Players.LocalPlayer
 
--- Settings
-local enabled = false
-local range = 4
-local cooldown = false
-local lastTarget = nil
-local daggerCooldownText
-local backstabConn -- 🔑 connection lưu lại
+    -- Remote
+    local daggerRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent") 
+    local killersFolder = workspace:WaitForChild("Players"):WaitForChild("Killers")
+    local killerNames = { "Jason", "c00lkidd", "JohnDoe", "1x1x1x1", "Noli" } 
 
--- Helper: check behind
-local function isBehindTarget(hrp, targetHRP) 
-    local distance = (hrp.Position - targetHRP.Position).Magnitude 
-    if distance > range then return false end
-    local direction = -targetHRP.CFrame.LookVector 
-    local toPlayer = (hrp.Position - targetHRP.Position) 
-    return toPlayer:Dot(direction) > 0.5 
-end
+    -- Settings
+    local enabled = false
+    local range = 4
+    local cooldown = false
+    local lastTarget = nil
+    local daggerCooldownText
+    local backstabConn 
 
--- Auto refresh dagger cooldown ref
-local function refreshDaggerRef()
-	local mainui = lp:FindFirstChild("PlayerGui"):FindFirstChild("MainUI")
-	if mainui and mainui:FindFirstChild("AbilityContainer") then
-		local dagger = mainui.AbilityContainer:FindFirstChild("Dagger")
-		if dagger and dagger:FindFirstChild("CooldownTime") then
-			daggerCooldownText = dagger.CooldownTime
-			return
-		end
-	end
-	daggerCooldownText = nil
-end
-lp.PlayerGui.DescendantAdded:Connect(refreshDaggerRef)
-lp.PlayerGui.DescendantRemoving:Connect(function(obj)
-	if obj == daggerCooldownText then daggerCooldownText = nil end
-end)
-refreshDaggerRef()
+    -- Check sau lưng
+    local function isBehindTarget(hrp, targetHRP) 
+        local distance = (hrp.Position - targetHRP.Position).Magnitude 
+        if distance > range then return false end
+        local direction = -targetHRP.CFrame.LookVector 
+        local toPlayer = (hrp.Position - targetHRP.Position) 
+        return toPlayer:Dot(direction) > 0.5 
+    end
 
--- Main loop (safe)
-local function startBackstab()
-    if backstabConn then backstabConn:Disconnect() end
-    backstabConn = RunService.RenderStepped:Connect(function()
-        if not enabled or cooldown then return end
-        if not daggerCooldownText or tonumber(daggerCooldownText.Text) then return end
-
-        local char = lp.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        for _, name in ipairs(killerNames) do
-            local killer = killersFolder:FindFirstChild(name)
-            local kHRP = killer and killer:FindFirstChild("HumanoidRootPart")
-            if kHRP then
-                pcall(function()
-                    if isBehindTarget(hrp, kHRP) and killer ~= lastTarget then
-                        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + kHRP.CFrame.LookVector)
-
-                        lastTarget = killer
-                        cooldown = true
-                        daggerRemote:FireServer("UseActorAbility", "Dagger")
-
-                        -- reset cooldown sau 2s hoặc khi thoát khỏi range
-                        task.delay(2, function()
-                            local t0 = tick()
-                            repeat task.wait(0.1) until not isBehindTarget(hrp, kHRP) or tick() - t0 > 3
-                            lastTarget = nil
-                            cooldown = false
-                        end)
-                        break
-                    end
-                end)
-                task.wait()
+    -- Refresh dagger ref
+    local function refreshDaggerRef()
+        local mainui = lp:FindFirstChild("PlayerGui"):FindFirstChild("MainUI")
+        if mainui and mainui:FindFirstChild("AbilityContainer") then
+            local dagger = mainui.AbilityContainer:FindFirstChild("Dagger")
+            if dagger and dagger:FindFirstChild("CooldownTime") then
+                daggerCooldownText = dagger.CooldownTime
+                return
             end
         end
-    end)
-end
-
-local function stopBackstab()
-    if backstabConn then
-        backstabConn:Disconnect()
-        backstabConn = nil
+        daggerCooldownText = nil
     end
-    cooldown = false
-    lastTarget = nil
-end
+    lp.PlayerGui.DescendantAdded:Connect(refreshDaggerRef)
+    lp.PlayerGui.DescendantRemoving:Connect(function(obj)
+        if obj == daggerCooldownText then daggerCooldownText = nil end
+    end)
+    refreshDaggerRef()
 
--- ================= Fluent GUI =================
-Tabs.Main:AddToggle("AutoBackstab", {
-	Title = "Auto Dagger",
-	Default = false,
-	Callback = function(val)
-		enabled = val
-		if val then
-			startBackstab()
-		else
-			stopBackstab()
-		end
-	end
-})
+    -- Main loop
+    local function startBackstab()
+        if backstabConn then backstabConn:Disconnect() end
+        backstabConn = RunService.RenderStepped:Connect(function()
+            if not enabled or cooldown then return end
+            if not daggerCooldownText or tonumber(daggerCooldownText.Text) then return end
 
-Tabs.Main:AddSlider("BackstabRange", {
-	Title = "Dagger Range",
-	Description = "Khoảng cách backstab",
-	Min = 1,
-	Max = 15,
-	Default = 4,
-	Rounding = 0,
-	Callback = function(val)
-		range = val
-		print("Range mới:", range)
-	end
-})
+            local char = lp.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            for _, name in ipairs(killerNames) do
+                local killer = killersFolder:FindFirstChild(name)
+                local kHRP = killer and killer:FindFirstChild("HumanoidRootPart")
+                if kHRP then
+                    pcall(function()
+                        if isBehindTarget(hrp, kHRP) and killer ~= lastTarget then
+                            hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + kHRP.CFrame.LookVector)
+                            lastTarget = killer
+                            cooldown = true
+                            daggerRemote:FireServer("UseActorAbility", "Dagger")
+                            task.delay(2, function()
+                                local t0 = tick()
+                                repeat task.wait(0.1) until not isBehindTarget(hrp, kHRP) or tick() - t0 > 3
+                                lastTarget = nil
+                                cooldown = false
+                            end)
+                            break
+                        end
+                    end)
+                    task.wait()
+                end
+            end
+        end)
+    end
+
+    local function stopBackstab()
+        if backstabConn then
+            backstabConn:Disconnect()
+            backstabConn = nil
+        end
+        cooldown = false
+        lastTarget = nil
+    end
+
+    -- ================= Fluent GUI =================
+    Tabs.Main:AddToggle("AutoBackstab", {
+        Title = "Auto Dagger",
+        Default = false,
+        Callback = function(val)
+            enabled = val
+            if val then
+                startBackstab()
+            else
+                stopBackstab()
+            end
+        end
+    })
+
+    Tabs.Main:AddSlider("BackstabRange", {
+        Title = "Dagger Range",
+        Min = 1,
+        Max = 15,
+        Default = 4,
+        Rounding = 0,
+        Callback = function(val)
+            range = val
+            print("Range mới:", range)
+        end
+    })
+end)
 
 
 -- Tabs.Player
