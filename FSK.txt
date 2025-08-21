@@ -659,6 +659,7 @@ end)
 
 
     Tabs.Main:AddSection("↳ Two Time")
+
 local Players = game:GetService("Players") 
 local ReplicatedStorage = game:GetService("ReplicatedStorage") 
 local RunService = game:GetService("RunService") 
@@ -720,9 +721,7 @@ local function startBackstab()
             local kHRP = killer and killer:FindFirstChild("HumanoidRootPart")
             if kHRP then
                 pcall(function()
-                    -- ✅ Chỉ để chế độ Normal + Facing luôn bật
                     if isBehindTarget(hrp, kHRP) and killer ~= lastTarget then
-                        -- Luôn xoay nhân vật theo hướng của killer
                         hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + kHRP.CFrame.LookVector)
 
                         lastTarget = killer
@@ -739,7 +738,7 @@ local function startBackstab()
                         break
                     end
                 end)
-                task.wait(0.1) -- 🔑 thêm delay để tránh loop quá nhanh
+                task.wait()
             end
         end
     end)
@@ -757,24 +756,29 @@ end
 -- ================= Fluent GUI =================
 Tabs.Main:AddToggle("AutoBackstab", {
 	Title = "Auto Dagger",
-	Default = false
-}):OnChanged(function(val)
-	enabled = val
-	if val then
-        startBackstab()
-    else
-        stopBackstab()
-    end
-end)
+	Default = false,
+	Callback = function(val)
+		enabled = val
+		if val then
+			startBackstab()
+		else
+			stopBackstab()
+		end
+	end
+})
 
 Tabs.Main:AddSlider("BackstabRange", {
 	Title = "Dagger Range",
-	Min = 1, Max = 15,
+	Description = "Khoảng cách backstab",
+	Min = 1,
+	Max = 15,
 	Default = 4,
-	Rounding = 0
-}):OnChanged(function(val)
-	range = val
-end)
+	Rounding = 0,
+	Callback = function(val)
+		range = val
+		print("Range mới:", range)
+	end
+})
 
 
 -- Tabs.Player
