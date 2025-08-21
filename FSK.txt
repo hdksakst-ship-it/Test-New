@@ -660,128 +660,101 @@ end)
 
     Tabs.Main:AddSection("↳ Two Time")
 
----------------------------------------------------------------------------------
--- 🟢 Chỉ load script backstab sau khi GUI sẵn sàng
-task.defer(function()
-    -- đảm bảo tab Main có
-    if not Tabs.Main then return end
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-    local Players = game:GetService("Players") 
-    local ReplicatedStorage = game:GetService("ReplicatedStorage") 
-    local RunService = game:GetService("RunService") 
-    local lp = Players.LocalPlayer
+-- Skill duy nhất của TwoTime
+local skillConfig = {
+    ["TwoTime"] = {skillName = "Dagger", castTime = 1}
+}
 
-    -- Remote
-    local daggerRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent") 
-    local killersFolder = workspace:WaitForChild("Players"):WaitForChild("Killers")
-    local killerNames = { "Jason", "c00lkidd", "JohnDoe", "1x1x1x1", "Noli" } 
+-- Danh sách boss đặc biệt cần teleport ra sau lưng
+local BackstabTargets = {"Jason", "Noli", "JohDoe", "c00lkidd", "Quest666", "1x1x1x1"}
 
-    -- Settings
-    local enabled = false
-    local range = 4
-    local cooldown = false
-    local lastTarget = nil
-    local daggerCooldownText
-    local backstabConn 
+-- Biến điều khiển
+local AutoBackstab = false
+local TeleportDistance = 5 -- mặc định 5m
 
-    -- Check sau lưng
-    local function isBehindTarget(hrp, targetHRP) 
-        local distance = (hrp.Position - targetHRP.Position).Magnitude 
-        if distance > range then return false end
-        local direction = -targetHRP.CFrame.LookVector 
-        local toPlayer = (hrp.Position - targetHRP.Position) 
-        return toPlayer:Dot(direction) > 0.5 
-    end
-
-    -- Refresh dagger ref
-    local function refreshDaggerRef()
-        local mainui = lp:FindFirstChild("PlayerGui"):FindFirstChild("MainUI")
-        if mainui and mainui:FindFirstChild("AbilityContainer") then
-            local dagger = mainui.AbilityContainer:FindFirstChild("Dagger")
-            if dagger and dagger:FindFirstChild("CooldownTime") then
-                daggerCooldownText = dagger.CooldownTime
-                return
-            end
+-- Kiểm tra model có trong danh sách backstab không
+local function IsBackstabTarget(model)
+    for _, name in ipairs(BackstabTargets) do
+        if model.Name == name then
+            return true
         end
-        daggerCooldownText = nil
     end
-    lp.PlayerGui.DescendantAdded:Connect(refreshDaggerRef)
-    lp.PlayerGui.DescendantRemoving:Connect(function(obj)
-        if obj == daggerCooldownText then daggerCooldownText = nil end
-    end)
-    refreshDaggerRef()
+    return false
+end
 
-    -- Main loop
-    local function startBackstab()
-        if backstabConn then backstabConn:Disconnect() end
-        backstabConn = RunService.RenderStepped:Connect(function()
-            if not enabled or cooldown then return end
-            if not daggerCooldownText or tonumber(daggerCooldownText.Text) then return end
+-- Teleport ra sau lưng và xoay mặt nhìn vào lưng mục tiêu
+local function TeleportBehindTarget(target)
+    local char = LocalPlayer.Character
+    if not (char and char:FindFirstChild("HumanoidRootPart")) then return end
+    if not (target and target:FindFirstChild("HumanoidRootPart")) then return end
 
-            local char = lp.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
+    local hrp = target.HumanoidRootPart
+    -- vị trí sau lưng mục tiêu (càng xa thì tăng số -Z)
+    local backPos = hrp.CFrame * CFrame.new(0, 0, 2) 
 
-            for _, name in ipairs(killerNames) do
-                local killer = killersFolder:FindFirstChild(name)
-                local kHRP = killer and killer:FindFirstChild("HumanoidRootPart")
-                if kHRP then
-                    pcall(function()
-                        if isBehindTarget(hrp, kHRP) and killer ~= lastTarget then
-                            hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + kHRP.CFrame.LookVector)
-                            lastTarget = killer
-                            cooldown = true
-                            daggerRemote:FireServer("UseActorAbility", "Dagger")
-                            task.delay(2, function()
-                                local t0 = tick()
-                                repeat task.wait(0.1) until not isBehindTarget(hrp, kHRP) or tick() - t0 > 3
-                                lastTarget = nil
-                                cooldown = false
-                            end)
-                            break
+    -- Teleport + xoay mặt về phía lưng
+    char.HumanoidRootPart.CFrame = CFrame.new(backPos.Position, hrp.Position)
+end
+
+-- Hàm cast skill (chỉ cho TwoTime)
+local function CastSkill(skillName)
+    local remote = ReplicatedStorage:FindFirstChild("Modules")
+        and ReplicatedStorage.Modules:FindFirstChild("Network")
+        and ReplicatedStorage.Modules.Network:FindFirstChild("RemoteEvent")
+
+    if remote and typeof(remote.FireServer) == "function" then
+        remote:FireServer("UseActorAbility", skillName)
+
+        -- Nếu bật AutoBackstab và là TwoTime
+        if AutoBackstab and LocalPlayer.Character and LocalPlayer.Character.Name == "TwoTime" then
+            local localChar = LocalPlayer.Character
+            if localChar and localChar:FindFirstChild("HumanoidRootPart") then
+                -- tìm boss gần nhất trong danh sách
+                local closest, minDist = nil, math.huge
+                for _, bossName in ipairs(BackstabTargets) do
+                    local boss = workspace:FindFirstChild(bossName)
+                    if boss and boss:FindFirstChild("HumanoidRootPart") then
+                        local dist = (localChar.HumanoidRootPart.Position - boss.HumanoidRootPart.Position).Magnitude
+                        if dist < minDist and dist <= TeleportDistance then
+                            minDist = dist
+                            closest = boss
                         end
-                    end)
-                    task.wait()
+                    end
+                end
+                -- Nếu tìm thấy thì teleport ra sau lưng
+                if closest then
+                    TeleportBehindTarget(closest)
                 end
             end
-        end)
+        end
     end
+end
 
-    local function stopBackstab()
-        if backstabConn then
-            backstabConn:Disconnect()
-            backstabConn = nil
-        end
-        cooldown = false
-        lastTarget = nil
+-- =========================
+-- UI: Toggle + Slider
+-- =========================
+
+Tabs.Main:AddToggle("AutoBackstabToggle", {
+    Title = "Auto Backstab",
+    Default = false,
+    Callback = function(Value)
+        AutoBackstab = Value
     end
+})
 
-    -- ================= Fluent GUI =================
-    Tabs.Main:AddToggle("AutoBackstab", {
-        Title = "Auto Dagger",
-        Default = false,
-        Callback = function(val)
-            enabled = val
-            if val then
-                startBackstab()
-            else
-                stopBackstab()
-            end
-        end
-    })
-
-    Tabs.Main:AddSlider("BackstabRange", {
-        Title = "Dagger Range",
-        Min = 1,
-        Max = 15,
-        Default = 4,
-        Rounding = 0,
-        Callback = function(val)
-            range = val
-            print("Range mới:", range)
-        end
-    })
-end)
+Tabs.Main:AddSlider("TeleportDistanceSlider", {
+    Title = "Backstab Range",
+    Min = 1,
+    Max = 10,
+    Default = 5,
+    Callback = function(Value)
+        TeleportDistance = Value
+    end
+})
 
 
 -- Tabs.Player
